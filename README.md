@@ -39,7 +39,7 @@ The full architecture and decision log is at [`docs/music-cli-plan.md`](docs/mus
 
 ## License
 
-Apache 2.0 — see the planning document for rationale. The full `LICENSE` and `NOTICE` files will land alongside the first code commit.
+Apache 2.0 — see [`LICENSE`](LICENSE) for the full text and [`NOTICE`](NOTICE) for attribution. Rationale for the licensing choice (including the patent-grant clause and the decision to keep plugin licensing permissive) is in the [planning document](docs/music-cli-plan.md#5-open-source-strategy).
 
 ## Contributing
 
