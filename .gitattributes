@@ -1,0 +1,14 @@
+# Linux-native project: enforce LF line endings in the repository across all platforms.
+* text=auto eol=lf
+
+# Explicit binary types (extend as the codebase grows)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.flac binary
+*.mp3 binary
+*.m4a binary
+*.ogg binary
+*.opus binary
