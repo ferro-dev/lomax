@@ -1,0 +1,34 @@
+lomax
+Copyright 2026 Evan Cahill
+
+This product is licensed under the Apache License, Version 2.0
+(see the LICENSE file).
+
+----------------------------------------------------------------------
+
+About the name
+--------------
+
+This project is named in homage to Alan Lomax (1915-2002), the American
+ethnomusicologist whose lifelong fieldwork building the Library of
+Congress Archive of American Folk Song is, in spirit, what this
+software tries to be in code: a careful, durable system for finding,
+organising, and preserving a music collection.
+
+lomax is an independent project. It is not produced by, endorsed by,
+or otherwise affiliated with:
+
+  - the Alan Lomax estate,
+  - the Association for Cultural Equity (the nonprofit Alan Lomax
+    founded in 1983 to repatriate his recordings to their communities
+    of origin; https://www.culturalequity.org/), or
+  - the Library of Congress American Folklife Center, which holds the
+    Alan Lomax Collection.
+
+For Alan Lomax's actual archive and recordings, please refer to the
+Association for Cultural Equity at https://research.culturalequity.org/.
+
+If at any point the Lomax estate, the Association for Cultural Equity,
+or the Library of Congress objects to the use of this name, the
+project commits in good faith to renaming. See docs/attribution.md
+for the longer attribution statement (to be added in M0).
