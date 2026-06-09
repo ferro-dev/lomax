@@ -14,5 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Community infrastructure: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`,
   `SECURITY.md`, `CHANGELOG.md`, `docs/attribution.md`, `docs/distros.md`,
   GitHub issue and pull request templates.
+- Go module (`go.mod`, Go 1.22+) and a minimal CLI entrypoint built on Cobra:
+  `lomax --version` and `lomax about` print the version and the mandatory Alan
+  Lomax attribution line.
 
 [Unreleased]: https://github.com/ferro-dev/lomax/commits/main
