@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# lomax pre-commit hook — mirrors the CI gates locally.
+# Enable with: make hooks   (or: git config core.hooksPath .githooks)
+set -euo pipefail
+
+echo "==> gofmt"
+unformatted="$(gofmt -l .)"
+if [ -n "$unformatted" ]; then
+	echo "gofmt: these files need formatting (run 'gofmt -w .'):" >&2
+	echo "$unformatted" >&2
+	exit 1
+fi
+
+echo "==> go vet"
+go vet ./...
+
+echo "==> golangci-lint"
+if command -v golangci-lint >/dev/null 2>&1; then
+	golangci-lint run
+else
+	echo "golangci-lint not installed; skipping (see CONTRIBUTING.md). CI will still enforce it." >&2
+fi
+
+echo "==> go test"
+go test ./...
