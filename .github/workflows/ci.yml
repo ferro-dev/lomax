@@ -78,6 +78,11 @@ jobs:
       - name: Install prerequisites
         run: ${{ matrix.prep }}
       - uses: actions/checkout@v4
+      # The checkout is owned by a different uid than the build user inside the
+      # container, so git refuses to operate on it ("dubious ownership") and
+      # go build's VCS stamping fails with exit 128. Mark it safe.
+      - name: Mark workspace safe for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
