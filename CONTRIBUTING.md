@@ -65,9 +65,13 @@ distro.
 ### Code style
 
 - `gofmt` (enforced; CI fails on unformatted code)
-- `golangci-lint` (configuration in `.golangci.yml`)
-- Pre-commit hooks run both; install them with the repo's hook setup once it
-  lands in M0.
+- `golangci-lint` (configuration in `.golangci.yml`) — install it with
+  `go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest`
+  or your distro's package.
+- Enable the pre-commit hook with `make hooks` (equivalently
+  `git config core.hooksPath .githooks`). It runs gofmt, `go vet`,
+  `golangci-lint`, and the tests before each commit — the same gates CI
+  enforces. `make check` runs them on demand.
 
 ## Submitting changes
 

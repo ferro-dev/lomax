@@ -20,5 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Continuous integration (GitHub Actions): gofmt + `go vet`, and build + test
   across Ubuntu 22.04/24.04 (native, with the race detector) and Debian 12 /
   Fedora / Arch (containers), all on the Go 1.22 floor.
+- Linting and dev tooling: `golangci-lint` config (`.golangci.yml`) plus a CI
+  lint job, a `.githooks/pre-commit` hook mirroring the CI gates, and a
+  `Makefile` (`build`/`test`/`vet`/`fmt`/`lint`/`hooks`/`check`).
 
 [Unreleased]: https://github.com/ferro-dev/lomax/commits/main

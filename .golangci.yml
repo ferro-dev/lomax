@@ -1,0 +1,21 @@
+# golangci-lint configuration (v2 schema).
+# Run locally with `golangci-lint run` or `make lint`; CI runs the same.
+version: "2"
+
+linters:
+  # "standard" = errcheck, govet, ineffassign, staticcheck, unused.
+  default: standard
+  enable:
+    - bodyclose    # HTTP response bodies must be closed (metadata-source clients)
+    - errname      # error vars/types named per convention
+    - misspell     # catch typos in comments and strings
+    - unconvert    # flag redundant type conversions
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/ferro-dev/lomax
