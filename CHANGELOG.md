@@ -17,5 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Go module (`go.mod`, Go 1.22+) and a minimal CLI entrypoint built on Cobra:
   `lomax --version` and `lomax about` print the version and the mandatory Alan
   Lomax attribution line.
+- Continuous integration (GitHub Actions): gofmt + `go vet`, and build + test
+  across Ubuntu 22.04/24.04 (native, with the race detector) and Debian 12 /
+  Fedora / Arch (containers), all on the Go 1.22 floor.
 
 [Unreleased]: https://github.com/ferro-dev/lomax/commits/main

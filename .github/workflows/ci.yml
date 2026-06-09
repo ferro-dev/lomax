@@ -1,0 +1,90 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least-privilege: CI only needs to read the repo.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save runner minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Floor declared in go.mod. Build and test against the minimum supported
+  # toolchain so a 1.22 floor violation fails CI rather than shipping.
+  GO_VERSION: "1.22"
+
+jobs:
+  fmt-vet:
+    name: gofmt + go vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: gofmt (must be clean)
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt found unformatted files:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+
+  test:
+    name: build + test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go build
+        run: go build ./...
+      - name: go test (race)
+        run: go test -race ./...
+
+  test-distros:
+    name: build + test (${{ matrix.distro }})
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.distro }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Debian 12 and Fedora ship a too-old system Go; setup-go installs
+          # the pinned toolchain itself. We only need TLS roots + git/tar so
+          # checkout and module fetch work inside the bare container.
+          - distro: debian:12
+            prep: apt-get update && apt-get install -y --no-install-recommends ca-certificates git
+          - distro: fedora:latest
+            prep: dnf -y install ca-certificates git tar
+          - distro: archlinux:latest
+            prep: pacman -Sy --noconfirm ca-certificates git tar
+    steps:
+      - name: Install prerequisites
+        run: ${{ matrix.prep }}
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: go build
+        run: go build ./...
+      # No -race here: the race detector needs a C toolchain, which we
+      # deliberately don't install in these minimal containers. The native
+      # ubuntu jobs above cover -race.
+      - name: go test
+        run: go test ./...
