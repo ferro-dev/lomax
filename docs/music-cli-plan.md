@@ -56,7 +56,7 @@ The goal is a modern, opinionated-but-configurable replacement that learns from 
 - **Configurable.** Every opinionated default can be overridden via config file or flags.
 - **Extensible via plugins.** Core handles local library management. Plugins handle sync, cloud services, and integrations.
 - **Linux-native.** This is a Linux tool, designed for Linux from day 1. macOS and Windows are explicit non-goals. The project does not pretend to be cross-platform; design choices favor Linux idioms (XDG, systemd-friendly, distro packaging) without compromise. See [Section 7](#7-linux-platform-strategy).
-- **Widely distributable on Linux.** Flatpak, apt, Fedora COPR/RPM, Arch (AUR), and language-native channels (pip/pipx, `cargo install`, `go install`) — whichever fit the chosen language.
+- **Widely distributable on Linux.** Flatpak, apt, Fedora COPR/RPM, Arch (AUR), and the Go-native channel (`go install`).
 - **Fully open source.** All code, all features, day 1.
 
 ### Non-Goals
@@ -148,26 +148,41 @@ Reasoning over the alternatives:
 
 All planned core dependencies are compatible with Apache 2.0:
 
-| Dependency | License |
-|------------|---------|
-| Mutagen | LGPL-2.0 |
-| musicbrainzngs | BSD-2-Clause |
-| pyacoustid | MIT |
-| Chromaprint (fpcalc binary) | LGPL-2.1 |
-| Typer | MIT |
-| Rich | MIT |
-| Pluggy | MIT |
-| SQLAlchemy | MIT |
-| Dynaconf | MIT |
-| libmtp | LGPL-2.1 |
-| libgpod | LGPL-2.0 |
+| Dependency | Role | License |
+|------------|------|---------|
+| `github.com/spf13/cobra` | CLI framework | Apache-2.0 |
+| `github.com/spf13/pflag` | flag parsing (Cobra dep) | BSD-3-Clause |
+| `github.com/charmbracelet/bubbletea` | TUI runtime | MIT |
+| `github.com/charmbracelet/lipgloss` | terminal styling | MIT |
+| `github.com/dhowden/tag` | audio tag reading | BSD-2-Clause |
+| `github.com/bogem/id3v2` | MP3/ID3v2 tag writing | MIT |
+| `github.com/go-flac/go-flac` | FLAC tag writing | MIT |
+| `github.com/abema/go-mp4` | MP4/M4A tag writing | MIT |
+| `modernc.org/sqlite` | pure-Go SQLite driver | BSD-3-Clause |
+| `github.com/BurntSushi/toml` | config parsing | MIT |
+| `github.com/hashicorp/go-plugin` | subprocess plugin IPC | MPL-2.0 |
+| `google.golang.org/grpc` | plugin transport | Apache-2.0 |
 
-LGPL libraries are compatible with Apache 2.0 distribution. No GPL dependencies in the planned core stack.
+Runtime binaries shelled out to (not linked, not bundled — see [Section 7](#7-linux-platform-strategy)):
+
+| Binary | Role | License |
+|--------|------|---------|
+| FFmpeg | decode/encode for transcode | LGPL-2.1 / GPL-2.0 (build-dependent) |
+| Chromaprint (`fpcalc`) | AcoustID fingerprinting | LGPL-2.1 |
+
+Native libraries used only by the post-1.0 specialized-sync plugins ([Section 8](#milestone-8--specialized-sync-targets-post-10)), via cgo, in their own optional plugin modules:
+
+| Library | Plugin | License |
+|---------|--------|---------|
+| libmtp | `lomax-plugin-mtp` | LGPL-2.1 |
+| libgpod | `lomax-plugin-ipod` | LGPL-2.0 |
+
+MPL-2.0 (`go-plugin`) is file-level copyleft and compatible with Apache 2.0 distribution; it imposes no obligation on the rest of the project. LGPL libraries are linked only by optional plugins and only via cgo. No GPL *code* dependencies in the core stack — FFmpeg's GPL surfaces only as a shelled-out binary the user's distro provides, never linked or bundled.
 
 ### Monetization
 
 - **Donation-only.** No paid tier, no "pro" features, no open-core split.
-- **GitHub Sponsors** — set up at launch alongside the repository.
+- **GitHub Sponsors** — set up at first release (Milestone 6), not at repo creation; tiers kept reward-free so no deliverable is owed.
 - **Project site** — documentation site with optional donation links. Platform TBD.
 - No features are gated. The plugin system is not designed with monetization hooks.
 
@@ -252,62 +267,43 @@ There is no single right answer; this is a values trade-off. A short version of 
 
 For a solo maintainer who values shipping and contribution velocity over peak performance, the bias is toward **Python** — particularly given Linux-only scope, where Python's distribution disadvantages disappear. For a project where a clean single-binary deliverable is paramount, the bias is toward **Go**. For a project willing to spend the design budget for a long-term performance ceiling, **Rust**.
 
-> **Open Decision — Language.** Decide before first commit. Listed in [Section 16](#16-open-decisions).
+> **Decision recorded.** Go 1.22+ was chosen on 2026-05-27 (see the callout at the top of this section). The three-way comparison above is retained as decision history.
 
-The remainder of this document continues to use the original Python-leaning concrete examples (Mutagen, Typer/Rich, Pluggy, Dynaconf, SQLAlchemy) for illustration purposes, since they are the most fleshed out and the project's prior art is mostly Python. Replace mentally with the equivalent stack from the table above if Go or Rust is chosen.
+The remainder of this document uses the concrete Go stack (Cobra, Bubble Tea/lipgloss, `dhowden/tag` + format-specific writers, `modernc.org/sqlite`, `BurntSushi/toml`, HashiCorp `go-plugin`). The "If Python" and "If Rust" sketches below are kept only as a record of the paths not taken.
 
-### If Python: Concrete Stack
+### Concrete Stack (Go — decided)
 
-**Python 3.11 minimum** for: `tomllib` in stdlib (config parsing), `ExceptionGroup` (async error handling), performance improvements, and `Self` type. Python 3.11 is available on every currently-supported Linux distro: Debian 12, Ubuntu 22.04 LTS (via deadsnakes if not using system Python) and 24.04 LTS, Fedora 38+, Arch (rolling), openSUSE Tumbleweed.
+**Go 1.22+** for generics maturity, the `slices`/`maps` packages, and structured logging (`log/slog`).
 
-**Audio Tagging — Mutagen.** Most battle-tested Python tagging library; covers every format needed: MP3 (ID3v2.3/v2.4), FLAC (Vorbis Comments), OGG Vorbis, Opus, AAC/ALAC (.m4a), AIFF, WavPack, Monkey's Audio (APEv2), Musepack. Write a thin, project-owned abstraction layer over Mutagen rather than inheriting beets' `mediafile` layer.
+**Audio Tagging.** `github.com/dhowden/tag` for reads; for writes, format-specific libraries: `github.com/bogem/id3v2` (MP3/ID3v2), `github.com/go-flac/go-flac` (FLAC/Vorbis Comments), `github.com/abema/go-mp4` (MP4/M4A). The write landscape is more fragmented than Python's Mutagen, so some upstream contribution or light forking is expected. Fallback where a Go writer is weak: shell out to `metaflac` (FLAC) or `mid3v2` (MP3), both packaged on every distro. A thin, project-owned tag abstraction sits over all of this so the rest of the codebase sees one interface.
 
-**Metadata Sources.**
+**Metadata Sources.** No mature Go clients exist for most of these, so they are thin hand-rolled HTTP+JSON clients against documented REST APIs:
 
-| Source | Python Library | Role |
-|--------|----------------|------|
-| MusicBrainz | `musicbrainzngs` | Primary: accurate release/recording/artist data |
-| AcoustID + Chromaprint | `pyacoustid` + `fpcalc` binary | Audio fingerprinting for untagged/mistagged files |
-| Discogs | `discogs_client` | Fallback for releases not in MusicBrainz; good for vinyl rips |
-| Last.fm | `pylast` | Genre enrichment, supplemental metadata, similar artists |
+| Source | Go approach | Role |
+|--------|-------------|------|
+| MusicBrainz | HTTP client against the MusicBrainz WS/2 JSON API | Primary: accurate release/recording/artist data |
+| AcoustID + Chromaprint | `fpcalc` subprocess for fingerprints + HTTP to the AcoustID API | Fingerprinting for untagged/mistagged files |
+| Discogs | HTTP client against the Discogs API | Fallback for releases not in MusicBrainz; good for vinyl rips |
+| Last.fm | HTTP client against the Last.fm API | Genre enrichment, supplemental metadata, similar artists |
 
-Resolution order: **MusicBrainz → AcoustID → Discogs → Last.fm**. Each source is optional and can be disabled per-user in config.
+Resolution order: **MusicBrainz → AcoustID → Discogs → Last.fm**. Each source is optional and can be disabled per-user in config. Concurrent lookups use goroutines coordinated with `golang.org/x/sync/errgroup`.
 
-**CLI Framework — Typer + Rich.** Typer for command/subcommand definition; Rich for terminal output (tables of proposed tag changes, progress bars, colored diffs). Both authored by the same developer and composing cleanly.
+**CLI Framework — Cobra + Charm.** Cobra for command/subcommand definition and shell-completion generation; Charm's `bubbletea` + `lipgloss` for interactive UI (tables of proposed tag changes, progress, colored diffs). `pterm` is a lighter option where no full-screen TUI is needed.
 
-**Plugin System — Entry Points + Pluggy.** Two-layer architecture: setuptools entry points for discovery (a plugin installed via `pip` is automatically available); Pluggy for the internal hook system (the hook system used by pytest — typed, documented hook specs, call ordering, `firstresult` semantics).
+**Plugin System — HashiCorp `go-plugin`.** Out-of-process subprocess plugins over gRPC on a Unix-domain socket — the same model HashiCorp uses for Terraform providers. Versioned, typed hook contracts; language-agnostic (third-party plugins may be written in any gRPC-capable language). See [Section 9](#9-plugin-system-design).
 
-**Configuration — Dynaconf + TOML.** Layered configuration (built-in defaults → system config → user config → environment variables → CLI flags). TOML via Python 3.11's stdlib `tomllib`. JSON Schema published for IDE autocompletion.
+**Configuration — `BurntSushi/toml`.** Layered configuration (built-in defaults → `/etc/lomax/config.toml` → user config → environment variables → CLI flags), decoded into typed structs. A JSON Schema is published for editor autocompletion.
 
-**Database — SQLAlchemy Core + SQLite.** Core (not ORM) for the library database; Alembic for migrations; SQLite as the backing store (serverless, single-file).
+**Database — `database/sql` + `modernc.org/sqlite`.** The pure-Go SQLite driver (no cgo) keeps the static-binary build clean; `database/sql` (no ORM) for the library DB. Migrations via `pressly/goose`. SQLite is the serverless, single-file backing store.
 
-### If Go: Concrete Stack Sketch
+**Release — Goreleaser** building `linux-amd64` and `linux-arm64`, publishing to GitHub Releases; `go install` also works for users with a Go toolchain.
 
-**Go 1.22+** for generics maturity, `slices` package, structured logging.
+### Paths Not Taken (reference)
 
-**Audio Tagging.** `github.com/dhowden/tag` for reads; for writes, the most credible options are `github.com/go-flac/go-flac` (FLAC), `github.com/bogem/id3v2` (MP3), and `github.com/abema/go-mp4` (MP4). Some forking and contribution upstream is likely. Alternative: shell out to `metaflac` and `mid3v2` for writes — uglier but battle-tested; both ship in every Linux distro.
+Recorded so the trade-offs aren't re-litigated:
 
-**CLI Framework.** Cobra + Charm's `bubbletea`/`lipgloss` for interactive UI. `pterm` is a simpler alternative if no full-screen TUI is needed.
-
-**Plugin System.** Out-of-process subprocess plugins communicating over stdin/stdout via JSON-RPC, or HashiCorp's `go-plugin` (which uses gRPC over a Unix-domain socket). This is the same model HashiCorp uses for Terraform providers, so the design is well-trodden. Plugins can be written in any language.
-
-**Config.** Stdlib + `github.com/BurntSushi/toml` is leanest. Viper if env-var/flag layering is wanted out of the box.
-
-**Database.** `database/sql` with `mattn/go-sqlite3` (cgo) or `modernc.org/sqlite` (pure Go — preferable for static binary builds). Migrations via `pressly/goose` or `golang-migrate`.
-
-### If Rust: Concrete Stack Sketch
-
-**Rust stable**, MSRV pinned conservatively (~6 months behind latest).
-
-**Audio Tagging.** `lofty` for read+write across all relevant formats. `symphonia` for decoding (used for AcoustID fingerprinting prep); encoding goes through `ffmpeg` subprocess regardless.
-
-**CLI Framework.** `clap` (derive macros) + `ratatui` for any TUI needs. `indicatif` for progress bars, `dialoguer` for interactive prompts.
-
-**Plugin System.** Subprocess plugins (recommended — language-agnostic, ABI-stable across compiler versions, less prone to soundness issues than dlopen) or `libloading` for in-process dynamic libraries.
-
-**Config.** `serde` + `toml` crate. `figment` if Dynaconf-style layering is wanted.
-
-**Database.** `sqlx` (compile-time SQL checks) or `rusqlite` (lower-level). Migrations via `refinery`.
+- **Python.** Deepest audio-metadata ecosystem (Mutagen for tags; `musicbrainzngs`, `pyacoustid`, `pylast` for sources) and the lowest plugin-authorship barrier (setuptools entry points + Pluggy). Its historical weakness was distribution to non-Linux platforms, which stopped mattering once scope went Linux-only — but the decisive factor was wanting a single static binary, plus performance on large libraries.
+- **Rust.** Highest performance ceiling and the strongest tagging library (Lofty, read+write) plus Symphonia for decode. Rejected on solo-maintainer iteration speed and the steeper plugin-contributor barrier.
 
 ---
 
@@ -326,7 +322,7 @@ The project targets Linux exclusively. macOS and Windows are explicit non-goals 
 | openSUSE Tumbleweed | Tier 2 | Best-effort; no dedicated CI |
 | RHEL/Rocky/Alma 9 | Tier 2 | Older glibc; older Python; known-good but not CI-gated |
 | Alpine Linux | Tier 2 | musl libc differences may surface; community-supported |
-| Older releases (Ubuntu 20.04, RHEL 8, Debian 11) | Unsupported | Pre-Python 3.11; pre-glibc 2.34; not worth the back-port cost |
+| Older releases (Ubuntu 20.04, RHEL 8, Debian 11) | Unsupported | Pre-glibc 2.35; not worth the back-port cost |
 
 CI runs the Tier 1 set on every PR. Tier 2 distros get a nightly job and accept bug reports.
 
@@ -397,11 +393,11 @@ If the project ships as a Flatpak, the sandbox imposes constraints worth designi
 - USB device access for the `mtp` plugin requires `--device=all` or `--device=usb`. This is granted by Flatpak permission, not silently bypassed.
 - Mounted SD cards under `/run/media/$USER/` are *not* visible inside the sandbox by default; `--filesystem=/run/media` is needed.
 
-These are documented in `docs/flatpak-permissions.md` and reflected in the published manifest. The non-Flatpak install paths (apt, AUR, pipx) have none of these constraints.
+These are documented in `docs/flatpak-permissions.md` and reflected in the published manifest. The non-Flatpak install paths (apt, AUR, `go install`) have none of these constraints.
 
 ### Shell Integration
 
-Tab completion ships for **bash, zsh, and fish** — the three shells in standard Linux distro repositories. Generation is delegated to the chosen CLI framework (Typer, Cobra, and clap all support all three).
+Tab completion ships for **bash, zsh, and fish** — the three shells in standard Linux distro repositories. Generation is delegated to Cobra, which supports all three.
 
 ---
 
@@ -409,7 +405,7 @@ Tab completion ships for **bash, zsh, and fish** — the three shells in standar
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                      CLI Layer (Typer + Rich)                 │
+│                CLI Layer (Cobra + Bubble Tea)                │
 │    import │ tag │ organize │ query │ sync │ config │ plugin   │
 └───────────────────────────┬──────────────────────────────────┘
                             │
@@ -418,17 +414,17 @@ Tab completion ships for **bash, zsh, and fish** — the three shells in standar
 │                                                               │
 │  ┌─────────────┐  ┌───────────────┐  ┌─────────────────────┐ │
 │  │  File I/O   │  │    Tagger     │  │     Library DB      │ │
-│  │  (pathlib)  │  │   (mutagen)   │  │ (SQLite/SQLAlchemy) │ │
+│  │  (stdlib)   │  │ (dhowden/tag) │  │  (modernc/sqlite)   │ │
 │  └─────────────┘  └───────────────┘  └─────────────────────┘ │
 │                                                               │
 │  ┌────────────────────────────────────────────────────────┐  │
 │  │                  Metadata Resolver                     │  │
 │  │     MusicBrainz → AcoustID → Discogs → Last.fm        │  │
-│  │              (async, parallel queries)                 │  │
+│  │                (goroutines + errgroup)                 │  │
 │  └────────────────────────────────────────────────────────┘  │
 │                                                               │
 │  ┌────────────────────────────────────────────────────────┐  │
-│  │              Plugin System (Pluggy + Entry Points)     │  │
+│  │            Plugin System (go-plugin / gRPC)            │  │
 │  └────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────┘
                             │
@@ -445,22 +441,22 @@ Tab completion ships for **bash, zsh, and fish** — the three shells in standar
 
 **Import workflow** (adding new files to managed library):
 1. Scan source path → collect audio files
-2. Read existing tags → display summary table (Rich)
-3. Resolve metadata from configured sources (async)
-4. Present proposed changes as a diff (Rich)
+2. Read existing tags → display summary table (Bubble Tea/lipgloss)
+3. Resolve metadata from configured sources (concurrent goroutines)
+4. Present proposed changes as a diff (lipgloss)
 5. User confirms, edits, or skips per-album
 6. Write tags → move/copy files to library path per naming template
 7. Register files in library database
 
 **Manage-in-place workflow** (fixing tags on already-organized files):
 1. Scan library path → diff current tags against metadata source
-2. Show what would change (Rich table, colored diff)
+2. Show what would change (lipgloss table, colored diff)
 3. Batch apply, interactive review, or dry-run
 
 **Naming templates:**
 - Configurable via TOML; sensible default provided
 - Template variables: `{artist}`, `{album_artist}`, `{album}`, `{year}`, `{disc}`, `{track}`, `{title}`, `{format}`, `{bitrate_class}`
-- Default example: `{album_artist}/{year} - {album}/{disc:02d}-{track:02d} {title}.{ext}`
+- Default example: `{album_artist}/{year} - {album}/{disc:02}-{track:02} {title}.{ext}` (zero-pad width via `:NN`)
 
 ---
 
@@ -468,14 +464,15 @@ Tab completion ships for **bash, zsh, and fish** — the three shells in standar
 
 ### Discovery
 
-Plugins declare themselves via a setuptools entry point in their `pyproject.toml`:
+A plugin is a standalone executable named `lomax-plugin-<name>` that speaks the lomax plugin protocol — gRPC over a Unix-domain socket, via HashiCorp `go-plugin`. lomax discovers plugins at startup by scanning, in order:
 
-```toml
-[project.entry-points."<tool-name>.plugins"]
-my_plugin = "my_package.plugin:MyPlugin"
-```
+1. `$XDG_DATA_HOME/lomax/plugins/` (where `lomax plugin install` places them),
+2. any directories listed in the `plugin_path` config key,
+3. `lomax-plugin-*` executables on `$PATH`.
 
-Installing the plugin package (`pip install tool-my-plugin`) makes it available. The tool discovers all registered entry points at startup.
+On launch, lomax performs the `go-plugin` handshake with each discovered binary, negotiates the hook protocol version, and registers the hooks the plugin advertises. A plugin that fails the handshake or declares an incompatible protocol version is skipped with a logged warning rather than aborting startup.
+
+`lomax plugin install <name>` fetches and installs a first-party plugin binary into the plugin directory; third-party plugins are dropped into that directory or placed on `$PATH` manually. Because the boundary is a subprocess speaking gRPC, plugins may be written in any language with a gRPC implementation, not only Go.
 
 ### Hook Specifications
 
@@ -528,10 +525,10 @@ These are maintained in the same **multi-module monorepo** — one Git repo, but
 | NAS / SMB / NFS share | Filesystem (when mounted) | stdlib | Trivial once mounted |
 | SD card (e.g., Hifi Walker H2 / Rockbox) | Filesystem (mounted) | stdlib | Trivial; identical to USB drive case |
 | Rockbox iPod (any model) | Filesystem (mounted) | stdlib | Trivial; Rockbox exposes the iPod as a plain mass-storage device |
-| Android device | MTP | `libmtp` + `python-mtp` | Works; MTP is occasionally unreliable; v2 plugin scope |
-| iPod Classic — stock iPod OS | Custom USB + iTunesDB | `libgpod` | Library is archived; mostly functional for legacy hardware; community-plugin scope |
+| Android device | MTP | `libmtp` via cgo | Works; MTP is occasionally unreliable; v2 plugin scope |
+| iPod Classic — stock iPod OS | Custom USB + iTunesDB | `libgpod` via cgo | Library is archived; mostly functional for legacy hardware; community-plugin scope |
 | iPhone / iPad | AFC/USB | `libimobiledevice` | **Music sync not supported** by libimobiledevice; file-system access only |
-| Subsonic-compatible server | HTTP REST API | `py-sonic` | Clean API; good plugin candidate |
+| Subsonic-compatible server | HTTP REST API | hand-rolled HTTP client | Clean API; good plugin candidate |
 
 **v1 recommendation:** Filesystem targets only (USB drives, SD cards, mounted network shares, Rockbox devices). This covers the majority of enthusiast use cases — including DAPs like the Hifi Walker H2 and any Rockbox-loaded iPod — without native library dependencies.
 
@@ -704,9 +701,9 @@ This handles the four real-world cases: (a) new tracks added to main library, (b
 FFmpeg can copy metadata from source to destination, but not all tag fields survive across formats and not all of them survive *correctly* — this is the source of the duplicate-artist bug seen in the linked beets discourse thread. The correct approach:
 
 1. Run FFmpeg without metadata copy (`-map_metadata -1`) so the output starts clean.
-2. Read source tags through the project's Mutagen abstraction.
+2. Read source tags through the project's tag abstraction (`dhowden/tag`).
 3. Map fields to ID3v2.4 (for MP3) using the same mapping the main importer uses.
-4. Write tags to the transcoded file via Mutagen.
+4. Write tags to the transcoded file through the abstraction's writer (`bogem/id3v2` for MP3).
 5. Embed/copy album art separately, optionally resizing it (a 5000×5000 cover doesn't help an iPod's screen and wastes flash).
 
 Doing tags ourselves (rather than relying on FFmpeg's metadata copy) means the mirror inherits the project's normalized tag conventions automatically — including any custom fields and disambiguation logic the main library uses.
@@ -741,7 +738,7 @@ lomax sync status                 # report mirror freshness + device disk usage 
 lomax sync prune <profile>        # force orphan cleanup pass on mirror or device
 ```
 
-Rich output during sync: progress bar showing "transcoding 47/312", followed by "syncing 312 files (4.2 GB)". `--dry-run` prints a Rich diff of what would change on disk.
+Live output during sync (Bubble Tea): progress bar showing "transcoding 47/312", followed by "syncing 312 files (4.2 GB)". `--dry-run` prints a lipgloss diff of what would change on disk.
 
 ### Workflow Walk-Through (User's Stated Use Case)
 
@@ -750,7 +747,7 @@ User has FLAC + occasional MP3 main library, a Hifi Walker H2 with Rockbox, and 
 **One-time setup:**
 
 ```bash
-pipx install lomax
+go install github.com/ferro-dev/lomax@latest   # or a GitHub Release binary / Flatpak
 lomax plugin install transcode sync-fs
 # edit config, add the [sync.profiles.h2] block above
 ```
@@ -787,32 +784,25 @@ A standalone "transcode-and-sync" tool sitting next to the main CLI is technical
 - **They are separate plugins, not one combined plugin.** `transcode` produces a mirror; `sync-fs` pushes a directory (mirror or main library) to a target. Composing them is the user's call per profile.
 - **Sync profiles are the user-facing abstraction.** Each profile maps a filter + transcode preset + mirror path + target path.
 - **State databases are mandatory, not optional.** Both mirror and device passes maintain SQLite state for incremental updates and orphan cleanup. This is what differentiates the workflow from `beets convert` and from a hand-rolled `ffmpeg | rsync` pipeline.
-- **Tag rewriting goes through Mutagen, not FFmpeg metadata copy.** Avoids the duplicate-artist class of bugs.
+- **Tag rewriting goes through the project's tag abstraction, not FFmpeg metadata copy.** Avoids the duplicate-artist class of bugs.
 - **Default MP3 preset is `mp3-320-cbr`** — matches the user's stated preference and is the safest choice for player compatibility on H2 and Rockbox iPod alike.
 
 ---
 
 ## 12. Distribution Plan
 
-> **Note:** This section currently describes Python-flavored distribution mechanics; conditional alternatives for Go and Rust are noted inline. The high-level phases (language-native → universal → distro-native) apply regardless of language.
+The three phases — Go-native → universal (Flatpak) → distro-native — sequence the rollout from lowest to highest packaging effort.
 
-### Phase 1 — Language-Native (Day 1)
+### Phase 1 — Go-Native (Day 1)
 
 The fastest path to a working install. Requires no external infrastructure beyond GitHub.
 
-**If Python:** PyPI + pipx. `pipx install lomax` installs into an isolated virtualenv, available on every Linux distro that ships Python 3 (i.e., all of them).
+- `go install github.com/ferro-dev/lomax@latest` for users with a Go toolchain.
+- GitHub Releases with prebuilt static binaries for `linux-amd64` and `linux-arm64`, for users without one.
+- Goreleaser automates the release pipeline (build, archive, checksum, sign, publish).
+- Changelog in `CHANGELOG.md` (Keep a Changelog format).
 
-- `pyproject.toml`-based build (PEP 517/518, `hatchling` as build backend)
-- `pipx install lomax` as the recommended user-facing install
-- `pip install lomax` also works
-- GitHub Releases with built wheel (`.whl`) attached
-- Changelog in `CHANGELOG.md` (Keep a Changelog format)
-
-**If Go:** `go install <module>@latest` for users with a Go toolchain. GitHub Releases with prebuilt binaries for `linux-amd64` and `linux-arm64`. Goreleaser automates the release pipeline.
-
-**If Rust:** `cargo install lomax` for users with a Rust toolchain. GitHub Releases with prebuilt binaries (`linux-amd64`, `linux-arm64`). `cargo-dist` automates the release pipeline.
-
-For all three languages, the GitHub Releases binaries are signed with a project GPG key and accompanied by SHA256 checksums.
+The GitHub Releases binaries are signed with a project GPG key and accompanied by SHA256 checksums.
 
 ### Phase 2 — Flatpak / Flathub
 
@@ -822,8 +812,7 @@ A universal, distro-agnostic install path that works on every Linux distro from 
 - Flathub requires an OSI-approved license (Apache 2.0 qualifies).
 - Sandbox model imposes filesystem permission requirements; see [Section 7 → Sandbox Awareness](#7-linux-platform-strategy).
 - The Flatpak manifest pulls in FFmpeg and Chromaprint as Flatpak-side dependencies, so users do not need to install them separately.
-- For Python: `flatpak-pip-generator` produces the dependency manifest fragment; some manifest verbosity is unavoidable but well-documented.
-- For Go/Rust: drop the binary into the manifest; trivial.
+- The manifest drops the prebuilt Go binary straight in — no per-dependency manifest generation needed.
 
 Flatpak is a particular fit for this project because it is Linux-only by design and it solves the "user has FFmpeg but it's the wrong build" class of problems that comes up with media tools.
 
@@ -843,7 +832,7 @@ Slowest to set up, but the most native install experience for users who prefer t
 
 ### Packaging Principles
 
-- **Core install must work without a C compiler.** Dependencies with native components (libmtp, libgpod, libchromaprint bindings) belong in optional plugin packages, not core. This is essential for Python builds where ABI-incompatible wheels are an ongoing source of pain; Go/Rust users get this for free.
+- **Core install must work without a C compiler.** The core is pure Go (`modernc.org/sqlite`, no cgo), so it builds and ships as a static binary with no toolchain required on the user's machine. Dependencies with native components (libmtp, libgpod) live in optional cgo plugin packages, never in core.
 - **System binaries (`ffmpeg`, `fpcalc`, `metaflac`) are runtime dependencies, not bundled.** The package manifest declares them; the user's distro provides them. Documented in [Section 7](#7-linux-platform-strategy).
 - **Same artifact across distros where possible.** A single Flatpak bundle covers Debian/Ubuntu/Fedora/Arch/openSUSE. Distro-specific packages are valuable but secondary.
 - **GPG-signed releases.** Every GitHub Release tag is signed; release artifacts have detached signatures published alongside.
@@ -880,10 +869,10 @@ If at any point the Lomax estate / ACE objects to the use of the name (unlikely 
 
 ### GitHub Features to Enable Day 1
 
-- **GitHub Sponsors** — donation link appears on the repository page; requires a Sponsors profile
 - **Discussions** — better than Issues for questions and general community conversation
 - **Security advisories** — private vulnerability reporting
-- **Branch protection** on `main` — require PR reviews before merge, even for the sole maintainer initially (sets the norm for future contributors)
+- **Branch protection** on `main` — require PR + review + passing CI before merge, even for the sole maintainer initially (sets the norm for future contributors). Admins may bypass while solo, since GitHub does not allow self-approving a PR.
+- **GitHub Sponsors** — **deferred to [Milestone 6](#milestone-6--first-release)**, not Day 1: a donate button has no value before there is a release to fund, and enrollment carries identity/payout/tax setup. When enabled, keep tiers reward-free so no deliverable is owed.
 
 ### Documentation Site
 
@@ -915,10 +904,10 @@ mkdocs.yml
 | Beets Pain Point | This Project's Answer |
 |-----------------|----------------------|
 | Slow import on large libraries | Async metadata resolution; parallel queries to multiple sources |
-| Opaque matching — hard to understand why it chose a match | Rich diff view: exact before/after for every field, with source attribution ("from MusicBrainz release MBID: ...") |
+| Opaque matching — hard to understand why it chose a match | lipgloss diff view: exact before/after for every field, with source attribution ("from MusicBrainz release MBID: ...") |
 | YAML config via bespoke `confuse` | TOML config, stdlib parser, JSON Schema for IDE support |
-| Stringly-typed plugin hooks | Pluggy with typed hook specifications; versioned API |
-| pip-only distribution | Flatpak (universal), AUR/COPR/PPA (distro-native), language-native (PyPI/cargo/`go install`) — see [Section 12](#12-distribution-plan) |
+| Stringly-typed plugin hooks | `go-plugin` with typed, versioned hook contracts over gRPC |
+| pip-only distribution | Flatpak (universal), AUR/COPR/PPA (distro-native), Go-native (`go install`) — see [Section 12](#12-distribution-plan) |
 | Requires knowing Python to install plugins | `lomax plugin install plugin-name` command wrapping the language-native installer |
 | No device sync beyond community plugins | Filesystem sync (incl. Rockbox / DAPs) and transcode-on-sync as maintained first-party plugins; MTP next |
 
@@ -929,25 +918,25 @@ mkdocs.yml
 ### Milestone 0 — Repository Bootstrap
 - [x] **Decide language** — Go 1.22+ (decided 2026-05-27, see [Section 6](#6-language--framework-choice))
 - [x] **Choose project name** — `lomax` (decided 2026-05-27, see [Section 16](#16-open-decisions))
-- [ ] Create GitHub repository at `github.com/<org-or-user>/lomax`
-- [ ] Add LICENSE (Apache 2.0), NOTICE (with Lomax attribution), README (state Linux-only support clearly; include "About the name" section), CONTRIBUTING, CODE_OF_CONDUCT, CHANGELOG, SECURITY, `docs/attribution.md`
-- [ ] Add `docs/distros.md` covering install commands and FFmpeg/Chromaprint setup per supported distro (see [Section 7](#7-linux-platform-strategy))
-- [ ] Set up GitHub Sponsors
-- [ ] Build configuration: `pyproject.toml` (Python) / `go.mod` (Go) / `Cargo.toml` (Rust)
-- [ ] CI pipeline (GitHub Actions) matrix: Ubuntu 22.04 + Ubuntu 24.04 + Debian 12 + Fedora 39 (via container) + Arch (via container); lint, type check, test
-- [ ] Pre-commit hooks for the chosen language (ruff+mypy / gofmt+golangci-lint / rustfmt+clippy)
-- [ ] Verify a "hello world" build artifact installs cleanly from Phase-1 distribution channel on a fresh Ubuntu 24.04 VM before any feature work begins
+- [x] Create GitHub repository at `github.com/ferro-dev/lomax`
+- [x] Add LICENSE (Apache 2.0), NOTICE (with Lomax attribution), README (states Linux-only support; "About the name" section), CONTRIBUTING, CODE_OF_CONDUCT, CHANGELOG, SECURITY, `docs/attribution.md`
+- [x] Add `docs/distros.md` covering install commands and FFmpeg/Chromaprint setup per supported distro (see [Section 7](#7-linux-platform-strategy))
+- [x] Build configuration: `go.mod` (module `github.com/ferro-dev/lomax`, floor Go 1.22)
+- [x] CI pipeline (GitHub Actions) matrix: Ubuntu 22.04 + 24.04 (native, race detector) + Debian 12 + Fedora + Arch (containers); golangci-lint, gofmt, `go vet`, build, test
+- [x] Pre-commit hooks (gofmt + golangci-lint) via `.githooks/pre-commit` + `Makefile`
+- [x] Verify a buildable artifact compiles and tests cleanly across the CI matrix before feature work begins
+- [ ] Set up GitHub Sponsors — **deferred to [Milestone 6](#milestone-6--first-release)** (no value pre-release; avoids a donate button on an empty repo)
 
 ### Milestone 1 — Core Tag Reading & Display
 - [ ] Read audio files recursively from a path
-- [ ] Parse tags via Mutagen abstraction layer
-- [ ] Display current tags in a Rich table (`lomax inspect <path>`)
+- [ ] Parse tags via the `dhowden/tag` abstraction layer
+- [ ] Display current tags in a lipgloss table (`lomax inspect <path>`)
 - [ ] Identify format, duration, bitrate, and encoding info
 
 ### Milestone 2 — Metadata Resolution
 - [ ] MusicBrainz lookup by existing tags (artist + album + title)
 - [ ] AcoustID fingerprint generation + MusicBrainz lookup for untagged files
-- [ ] Display proposed changes as a Rich diff (before/after per field)
+- [ ] Display proposed changes as a lipgloss diff (before/after per field)
 - [ ] Dry-run mode
 
 ### Milestone 3 — Tag Writing & File Organization
@@ -958,26 +947,27 @@ mkdocs.yml
 - [ ] Manage-in-place workflow (existing library → review + fix)
 
 ### Milestone 4 — Library Database
-- [ ] SQLAlchemy schema for tracks, albums, artists
+- [ ] `database/sql` schema on `modernc.org/sqlite` for tracks, albums, artists; migrations via `goose`
 - [ ] Track which files are managed; detect moved/deleted files
 - [ ] Query interface (`lomax query artist:"David Bowie" year:1972`)
 
 ### Milestone 5 — Plugin System
-- [ ] Pluggy hook specification definitions
-- [ ] Entry point discovery at startup
+- [ ] `go-plugin` hook protocol definitions (gRPC, versioned)
+- [ ] Plugin discovery at startup (plugin dir + `$PATH`)
 - [ ] `lomax plugin list` / `plugin install` / `plugin remove` commands
 - [ ] Port Discogs and Last.fm sources as first-party plugins
 
-### Milestone 6 — PyPI Release
-- [ ] Version 0.1.0 to PyPI
-- [ ] `pipx install lomax` install path working and documented
-- [ ] GitHub Release with wheel artifact
+### Milestone 6 — First Release
+- [ ] Version 0.1.0 tagged; Goreleaser builds `linux-amd64` and `linux-arm64`
+- [ ] `go install` path and GitHub Release binaries working and documented
+- [ ] GitHub Release with GPG-signed binaries + SHA256 checksums
 - [ ] Documentation site live (MkDocs + Material)
+- [ ] Set up GitHub Sponsors (deferred from M0; keep tiers reward-free)
 
 ### Milestone 7 — Mirror Libraries & Filesystem Sync (Post-1.0)
 - [ ] `lomax-plugin-transcode`: sync profiles, transcode presets (mp3-320-cbr, mp3-v0, mp3-v2, aac-256, passthrough)
 - [ ] Mirror state DB: incremental transcoding, orphan cleanup, preset-change detection
-- [ ] Tag rewrite via Mutagen (not FFmpeg metadata copy); embedded art handling + optional resize
+- [ ] Tag rewrite via the tag abstraction (not FFmpeg metadata copy); embedded art handling + optional resize
 - [ ] `lomax-plugin-sync-fs`: filesystem sync to mounted targets (USB, SD cards, Rockbox devices, NAS)
 - [ ] Device state DB per profile, orphan cleanup on device, `--dry-run` and `--prune`
 - [ ] `lomax sync` command surface: per-profile, all-profiles, status, transcode-only, push-only
@@ -1002,7 +992,7 @@ These require a decision before or shortly after repository creation:
 | **Config file location** | XDG vs. dotfile in `$HOME` | XDG (`$XDG_CONFIG_HOME/lomax/config.toml`); system-wide `/etc/lomax/config.toml` also read | Detailed in [Section 7](#7-linux-platform-strategy) |
 | **Monorepo vs. multi-repo for plugins** | ~~Single-module monorepo / multi-module monorepo / multi-repo~~ | **DECIDED: Multi-module monorepo** (2026-05-27) | One repo, each plugin its own `go.mod` under `plugins/<name>/`. Atomic cross-cutting refactors during pre-1.0 hook-API churn + per-plugin dep surface + per-plugin release tags. Community plugins live in their own repos. |
 | **Documentation platform** | ~~MkDocs + Material / Hugo / Docusaurus~~ | **DECIDED: MkDocs + Material** (2026-05-27) | Best out-of-box UX (search, theming, admonitions, content tabs). Python only in CI, not on user machine. Deploy via GitHub Pages. |
-| **Minimum runtime version** | Language-dependent | Python 3.11 / Go 1.22 / Rust MSRV ~6 mo behind latest | 3.11 is on all current LTS distros; 3.12 is not yet on Ubuntu 22.04 LTS |
+| **Minimum runtime version** | ~~Language-dependent~~ | **DECIDED: Go 1.22** (2026-05-27) | Declared as the `go.mod` floor; the build toolchain may be newer. Pure-Go static binary has no separate runtime requirement on the user's machine. |
 | **Default MP3 preset for sync mirrors** | ~~320 CBR vs. V0 VBR~~ | **DECIDED: 320 CBR** (2026-05-27) | Broadest device compatibility; VBR seek tables are imperfect on some old hardware. |
 | **Mirror change detection** | ~~mtime+size only vs. +content hash~~ | **DECIDED: mtime+size default; BLAKE3 opt-in** (2026-05-27) | Hashing is slow on large libraries; mtime+size catches the realistic cases. Config flag for paranoid users. |
 | **Multi-machine sync state** | ~~Host DB vs. device manifest~~ | **DECIDED: Host-only for v1** (2026-05-27) | Documented as "one device = one host." Device-side manifest revisited in v2. |
@@ -1016,14 +1006,17 @@ These require a decision before or shortly after repository creation:
 - [wrtag](https://github.com/sentriz/wrtag) — Go-based MusicBrainz tagger
 - [MusicBrainz Picard](https://github.com/metabrainz/picard)
 - [OneTagger](https://github.com/Marekkon5/onetagger) — Rust-based tagger
-- [Mutagen documentation](https://mutagen.readthedocs.io/)
-- [musicbrainzngs](https://python-musicbrainzngs.readthedocs.io/)
-- [pyacoustid](https://github.com/beetbox/pyacoustid)
-- [Typer documentation](https://typer.tiangolo.com/)
-- [Rich documentation](https://rich.readthedocs.io/)
-- [Pluggy documentation](https://pluggy.readthedocs.io/)
-- [Dynaconf documentation](https://www.dynaconf.com/)
-- [Python Plugin Architecture Guide](https://packaging.python.org/en/latest/guides/creating-and-discovering-plugins/)
+- [dhowden/tag](https://github.com/dhowden/tag) — Go audio metadata reader
+- [bogem/id3v2](https://github.com/bogem/id3v2) — Go ID3v2 tag writer
+- [go-flac/go-flac](https://github.com/go-flac/go-flac) — Go FLAC metadata
+- [MusicBrainz API (WS/2)](https://musicbrainz.org/doc/MusicBrainz_API)
+- [AcoustID web service](https://acoustid.org/webservice) + [Chromaprint](https://acoustid.org/chromaprint)
+- [Cobra](https://github.com/spf13/cobra) — Go CLI framework
+- [Charm: Bubble Tea](https://github.com/charmbracelet/bubbletea) + [lipgloss](https://github.com/charmbracelet/lipgloss)
+- [HashiCorp go-plugin](https://github.com/hashicorp/go-plugin) — subprocess plugin system
+- [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) — pure-Go SQLite driver
+- [BurntSushi/toml](https://github.com/BurntSushi/toml) — Go TOML parser
+- [Goreleaser](https://goreleaser.com/) — Go release automation
 - [libmtp](https://github.com/libmtp/libmtp)
 - [libgpod](https://github.com/gtkpod/libgpod)
 - [libimobiledevice](https://libimobiledevice.org/)
@@ -1034,7 +1027,6 @@ These require a decision before or shortly after repository creation:
 - [LAME MP3 encoder](https://lame.sourceforge.io/)
 - [FFmpeg](https://ffmpeg.org/)
 - [Rockbox](https://www.rockbox.org/) — Open-source firmware for portable music players
-- [Flatpak pip generator](https://github.com/flatpak/flatpak-pip-generator)
 - [Keep a Changelog](https://keepachangelog.com/)
 - [Contributor Covenant](https://www.contributor-covenant.org/)
 - [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0)

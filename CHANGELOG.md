@@ -24,4 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lint job, a `.githooks/pre-commit` hook mirroring the CI gates, and a
   `Makefile` (`build`/`test`/`vet`/`fmt`/`lint`/`hooks`/`check`).
 
+### Changed
+- Reconciled `docs/music-cli-plan.md` to the decided Go stack: rewrote the
+  dependency-license table, architecture diagram, plugin-discovery model,
+  transcode tag handling, distribution plan, and roadmap (M1/M4/M5/M6/M7) from
+  the placeholder Python examples to Cobra / Bubble Tea / `dhowden/tag` /
+  `modernc.org/sqlite` / `go-plugin` / Goreleaser. Moved GitHub Sponsors from a
+  Day-1 item to Milestone 6. The §6 language comparison is retained as history.
+
 [Unreleased]: https://github.com/ferro-dev/lomax/commits/main
