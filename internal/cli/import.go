@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/ferro-dev/lomax/internal/audio"
+	"github.com/ferro-dev/lomax/internal/library"
 	"github.com/ferro-dev/lomax/internal/naming"
 	"github.com/ferro-dev/lomax/internal/resolve"
 )
@@ -21,6 +22,7 @@ func newImportCmd() *cobra.Command {
 	var dest string
 	var namingTemplate string
 	var acoustidKey string
+	var dbPath string
 	var dryRun bool
 	var move bool
 
@@ -35,18 +37,19 @@ func newImportCmd() *cobra.Command {
 			if acoustidKey == "" {
 				acoustidKey = os.Getenv(acoustIDAPIKeyEnv)
 			}
-			return runImport(cmd, args[0], dest, namingTemplate, acoustidKey, dryRun, move)
+			return runImport(cmd, args[0], dest, namingTemplate, acoustidKey, dbPath, dryRun, move)
 		},
 	}
 	cmd.Flags().StringVar(&dest, "dest", "", "library root to import files into (required)")
 	cmd.Flags().StringVar(&namingTemplate, "naming-template", naming.Default, "destination path template (see docs/music-cli-plan.md section 8)")
 	cmd.Flags().StringVar(&acoustidKey, "acoustid-key", "", "AcoustID API key for fingerprint lookups (or set "+acoustIDAPIKeyEnv+")")
+	addLibraryDBFlag(cmd, &dbPath)
 	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "preview proposed changes without writing or moving files")
 	cmd.Flags().BoolVar(&move, "move", false, "move source files into the library instead of copying them (default: copy, leaving the source untouched)")
 	return cmd
 }
 
-func runImport(cmd *cobra.Command, source, dest, namingTemplate, acoustidKey string, dryRun, move bool) error {
+func runImport(cmd *cobra.Command, source, dest, namingTemplate, acoustidKey, dbPath string, dryRun, move bool) error {
 	tpl, err := naming.Parse(namingTemplate)
 	if err != nil {
 		return err
@@ -59,6 +62,17 @@ func runImport(cmd *cobra.Command, source, dest, namingTemplate, acoustidKey str
 	if len(files) == 0 {
 		_, err := fmt.Fprintf(cmd.OutOrStdout(), "no audio files found under %s\n", source)
 		return err
+	}
+
+	// dry-run touches nothing, including the library database — only open
+	// it once there's actually something to record.
+	var db *library.DB
+	if !dryRun {
+		db, err = openLibrary(dbPath)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = db.Close() }()
 	}
 
 	resolver := newResolver(acoustidKey)
@@ -108,6 +122,17 @@ func runImport(cmd *cobra.Command, source, dest, namingTemplate, acoustidKey str
 		}
 		if _, err := fmt.Fprintf(out, "  imported to %s\n\n", destPath); err != nil {
 			return err
+		}
+
+		// Read the file back from its final location, so the database
+		// records exactly what's there rather than a hand-merged guess.
+		final, err := audio.ReadTrack(destPath)
+		if err != nil {
+			_, _ = fmt.Fprintf(errOut, "warning: %s: %v\n", destPath, err)
+			continue
+		}
+		if err := db.Upsert(final); err != nil {
+			_, _ = fmt.Fprintf(errOut, "warning: %s: failed to update library database: %v\n", destPath, err)
 		}
 	}
 	return nil

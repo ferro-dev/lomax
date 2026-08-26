@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ferro-dev/lomax/internal/audio"
+	"github.com/ferro-dev/lomax/internal/library"
 	"github.com/ferro-dev/lomax/internal/resolve"
 	"github.com/ferro-dev/lomax/internal/testsupport"
 )
@@ -64,6 +65,40 @@ func TestImportWithNoTagsStillOrganizesByFallback(t *testing.T) {
 	}
 	if !strings.Contains(got, dest) {
 		t.Errorf("import output missing a destination path under %s:\n%s", dest, got)
+	}
+}
+
+// TestImportAppliedRegistersInLibrary exercises a real (non-dry-run) import
+// end to end. The fixture has a title/album but no artist, so
+// resolveFile's "needs both artist and title" MusicBrainz gate skips it —
+// fully offline — while still giving the naming template enough to work
+// with for a normal-looking destination path.
+func TestImportAppliedRegistersInLibrary(t *testing.T) {
+	src := testsupport.WriteID3v2Fixture(t, "track.mp3", map[string]string{
+		"TIT2": "Test Title", "TALB": "Test Album",
+	})
+	dest := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "library.db")
+
+	got := runRoot(t, "import", src, "--dest", dest, "--dry-run=false", "--library-db", dbPath)
+	if !strings.Contains(got, "imported to") {
+		t.Errorf("import output = %q, want it to report the import", got)
+	}
+
+	db, err := library.Open(dbPath)
+	if err != nil {
+		t.Fatalf("reopen library: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	all, err := db.All()
+	if err != nil {
+		t.Fatalf("All: %v", err)
+	}
+	if len(all) != 1 {
+		t.Fatalf("database after import = %+v, want exactly one registered track", all)
+	}
+	if !strings.HasPrefix(all[0].Path, dest) {
+		t.Errorf("registered path %q is not under the destination %q", all[0].Path, dest)
 	}
 }
 

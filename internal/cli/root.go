@@ -33,6 +33,8 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newResolveCmd())
 	root.AddCommand(newRetagCmd())
 	root.AddCommand(newImportCmd())
+	root.AddCommand(newQueryCmd())
+	root.AddCommand(newVerifyCmd())
 	return root
 }
 
