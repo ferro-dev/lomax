@@ -85,6 +85,18 @@ func Parse(raw string) (*Template, error) {
 // directory level — the only filesystem-reserved character on the
 // case-sensitive Linux filesystems this project targets (see
 // docs/music-cli-plan.md section 7).
+//
+// An unknown field (Fields' zero value) renders as an empty string rather
+// than being omitted, so a template segment built entirely from unknown
+// fields (e.g. "{year} - {album}" with both blank) can render as a run of
+// literal separator characters with nothing between them. On Linux
+// filesystems this is merely an odd-looking name, not an error. It's worth
+// knowing if developing on a non-Linux filesystem, though — a leading or
+// trailing space in a path component is silently normalized away by the
+// Win32 file APIs, which can make an MkdirAll and a later file-open of the
+// literal same Go string target subtly different paths. Fixing tags first
+// (`lomax resolve`/`retag`) sidesteps this; teaching Render to skip
+// fields entirely rather than blank them is a possible future refinement.
 func (t *Template) Render(f Fields) string {
 	return tokenPattern.ReplaceAllStringFunc(t.raw, func(tok string) string {
 		m := tokenPattern.FindStringSubmatch(tok)

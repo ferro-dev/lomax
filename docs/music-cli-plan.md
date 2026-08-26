@@ -953,9 +953,16 @@ mkdocs.yml
 - Dependency versions actually used are the `/v2` module lines (`bogem/id3v2/v2`, `go-flac/go-flac/v2`, `go-flac/flacvorbis/v2`), not the unversioned import paths in section 5's table.
 
 ### Milestone 4 — Library Database
-- [ ] `database/sql` schema on `modernc.org/sqlite` for tracks, albums, artists; migrations via `goose`
-- [ ] Track which files are managed; detect moved/deleted files
-- [ ] Query interface (`lomax query artist:"David Bowie" year:1972`)
+- [x] `database/sql` schema on `modernc.org/sqlite` for tracks, albums, artists; migrations via `goose`
+- [x] Track which files are managed; detect moved/deleted files
+- [x] Query interface (`lomax query artist:"David Bowie" year:1972`)
+
+**Scope notes (2026-08-26):**
+- Library database lives under `$XDG_STATE_HOME/lomax/library.db` (per section 7's own table — "State (DBs, cursors)"), not `$XDG_DATA_HOME`; override via `LOMAX_STATE_DIR` or `--library-db`.
+- `import` and `retag` now upsert every file they process into the database (re-reading the final on-disk tags rather than hand-merging, so the database always matches reality) — this is what "track which files are managed" means in practice; `resolve` stays side-effect-free and never touches the database.
+- `lomax verify <path>` reconciles the database against the filesystem: repoints rows it can match to a moved file (by size, then title+artist on a tag read), reports the rest as `missing` (or removes them with `--prune`), and reports on-disk files the database has never seen as `untracked`. Not one of the diagram's original verb names, added because none of `import`/`tag`/`organize`/`query`/`sync`/`config`/`plugin` fit a database-vs-filesystem consistency check.
+- `internal/query`'s `field:value` grammar is schema-agnostic on purpose — reused as-is by `library.Search`'s column mapping, and intended for Milestone 7's sync-profile `filter` expressions. Only equality is implemented; comparison operators (`>=`, relative dates) from section 11's sync-profile examples are left as a natural extension, not needed until M7.
+- Dependency versions actually used: `modernc.org/sqlite` pinned to `v1.29.6` and `pressly/goose/v3` pinned to `v3.20.0` — both packages' `@latest` bump the `go.mod` floor well past the declared Go 1.22 (`go get` at HEAD required Go 1.25), which would break CI's pinned `GO_VERSION: "1.22"`. Revisit the pin when the CI floor itself is deliberately raised.
 
 ### Milestone 5 — Plugin System
 - [ ] `go-plugin` hook protocol definitions (gRPC, versioned)
