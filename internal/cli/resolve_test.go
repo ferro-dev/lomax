@@ -36,7 +36,7 @@ func TestResolveDryRunFalseIsRejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("resolve --dry-run=false: got nil error, want an error")
 	}
-	if !strings.Contains(err.Error(), "Milestone 3") {
-		t.Errorf("resolve --dry-run=false error = %q, want it to explain writing isn't supported yet", err.Error())
+	if !strings.Contains(err.Error(), "retag") && !strings.Contains(err.Error(), "import") {
+		t.Errorf("resolve --dry-run=false error = %q, want it to point at retag/import", err.Error())
 	}
 }
