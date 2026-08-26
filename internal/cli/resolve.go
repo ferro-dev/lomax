@@ -46,7 +46,12 @@ func runResolve(cmd *cobra.Command, path, acoustidKey string) error {
 		return err
 	}
 
-	resolver := newResolver(acoustidKey)
+	resolver, closeResolver, err := newResolver(cmd, acoustidKey)
+	if err != nil {
+		return err
+	}
+	defer closeResolver()
+
 	ctx := cmd.Context()
 	for _, file := range files {
 		track, proposal, ok := resolveFile(cmd, ctx, resolver, file)

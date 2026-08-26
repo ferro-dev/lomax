@@ -75,7 +75,12 @@ func runImport(cmd *cobra.Command, source, dest, namingTemplate, acoustidKey, db
 		defer func() { _ = db.Close() }()
 	}
 
-	resolver := newResolver(acoustidKey)
+	resolver, closeResolver, err := newResolver(cmd, acoustidKey)
+	if err != nil {
+		return err
+	}
+	defer closeResolver()
+
 	ctx := cmd.Context()
 	out, errOut := cmd.OutOrStdout(), cmd.ErrOrStderr()
 	for _, file := range files {

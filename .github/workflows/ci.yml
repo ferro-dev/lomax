@@ -106,3 +106,28 @@ jobs:
       # ubuntu jobs above cover -race.
       - name: go test
         run: go test ./...
+
+  test-plugins:
+    name: build + test (plugins)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      # Each plugins/<name> is its own Go module (multi-module monorepo —
+      # see docs/music-cli-plan.md section 16), so root's `go build ./...`
+      # / `go test ./...` never touch them; check each one explicitly.
+      - name: build + vet + test each plugin module
+        run: |
+          status=0
+          for dir in plugins/*/; do
+            name=$(basename "$dir")
+            echo "::group::$name"
+            ( cd "$dir" \
+              && go build ./... \
+              && go vet ./... \
+              && go test ./... ) || status=1
+            echo "::endgroup::"
+          done
+          exit $status

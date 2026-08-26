@@ -1,9 +1,9 @@
 // Package resolve implements lomax's metadata resolution pipeline: given a
 // track's current tags, propose corrected/completed metadata from external
-// sources. Resolution order is MusicBrainz (tag-based search) then AcoustID
-// (fingerprint-based, for untagged or unmatched files) — see
-// docs/music-cli-plan.md section 6. Discogs and Last.fm are deferred to
-// Milestone 5's plugin ports.
+// sources. Resolution order is MusicBrainz (tag-based search), AcoustID
+// (fingerprint-based, for untagged or unmatched files), then any installed
+// plugin sources in discovery order (Discogs, Last.fm — see
+// docs/music-cli-plan.md section 6 and Milestone 5).
 package resolve
 
 import (
@@ -15,6 +15,7 @@ import (
 	"github.com/ferro-dev/lomax/internal/acoustid"
 	"github.com/ferro-dev/lomax/internal/audio"
 	"github.com/ferro-dev/lomax/internal/musicbrainz"
+	"github.com/ferro-dev/lomax/internal/pluginapi"
 )
 
 // Proposal is a set of proposed metadata field values, attributed to the
@@ -52,6 +53,21 @@ type Resolver struct {
 	// step. Both must be non-nil to enable it.
 	Fingerprint       func(path string) (acoustid.Fingerprint, error)
 	LookupFingerprint func(ctx context.Context, fp acoustid.Fingerprint) (*acoustid.Match, error)
+
+	// PluginSources are tried in order after AcoustID, for whatever
+	// third-party sources the user has installed as plugins (see
+	// internal/pluginhost and Milestone 5). Empty by default — no
+	// plugins means no change in behavior from Milestone 2-4.
+	PluginSources []PluginSource
+}
+
+// PluginSource adapts one loaded plugin into the resolver's fallback chain.
+// ResolveMetadata is a function field (matching SearchRecording/
+// LookupFingerprint above) so tests can inject a fake source without a
+// real plugin subprocess.
+type PluginSource struct {
+	Name            string
+	ResolveMetadata func(ctx context.Context, artist, album, title string) (*pluginapi.Match, error)
 }
 
 // NewResolver builds a Resolver backed by real MusicBrainz and AcoustID
@@ -122,6 +138,28 @@ func (r *Resolver) Resolve(ctx context.Context, track audio.Track) (*Proposal, [
 		default:
 			warnings = append(warnings, fmt.Sprintf("acoustid fingerprinting failed: %v", err))
 		}
+	}
+
+	for _, ps := range r.PluginSources {
+		if strings.TrimSpace(track.Artist) == "" && strings.TrimSpace(track.Title) == "" {
+			break // nothing for any remaining plugin source to search with either
+		}
+		match, err := ps.ResolveMetadata(ctx, track.Artist, track.Album, track.Title)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("%s plugin lookup failed: %v", ps.Name, err))
+			continue
+		}
+		if match == nil {
+			continue
+		}
+		return &Proposal{
+			Title:       match.Title,
+			Artist:      match.Artist,
+			AlbumArtist: match.AlbumArtist,
+			Album:       match.Album,
+			Year:        match.Year,
+			Source:      fmt.Sprintf("%s plugin match", ps.Name),
+		}, warnings, nil
 	}
 
 	return nil, warnings, nil

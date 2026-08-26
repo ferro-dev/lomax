@@ -1,0 +1,51 @@
+// Package pluginapi defines lomax's plugin protocol: the gRPC service
+// contract subprocess plugins implement, hosted over HashiCorp go-plugin
+// (see docs/music-cli-plan.md section 9).
+//
+// This file is the versioned wire contract. lomax guarantees backward
+// compatibility within a major protocol version (see the handshake's
+// ProtocolVersion in internal/pluginapi/handshake.go, which is independent
+// of this schema's own evolution — adding fields here is safe under normal
+// protobuf compatibility rules; ProtocolVersion only needs bumping for a
+// breaking change).
+//
+// Milestone 5 implements exactly one hook as a real gRPC service:
+// MetadataResolver, corresponding to the `resolve_metadata` hook in the
+// plan's hook table. The other planned hooks (pre_import, post_import,
+// pre_write_tags, post_write_tags, format_path, sync_device,
+// pre_sync_transform, register_commands) are named there but not yet
+// backed by a service definition — they'll get one as core grows a call
+// site for them, rather than speculatively generating unused RPC surface.
+syntax = "proto3";
+
+package pluginapi;
+
+option go_package = "github.com/ferro-dev/lomax/internal/pluginapi/proto";
+
+// MetadataResolver is implemented by plugins that add a metadata source to
+// the resolver's fallback chain (see docs/music-cli-plan.md section 6's
+// resolution order: MusicBrainz -> AcoustID -> Discogs -> Last.fm). Core
+// calls ResolveMetadata with whatever tags the track currently has; the
+// plugin looks the track up against its own source and reports a match, if
+// any.
+service MetadataResolver {
+  rpc ResolveMetadata(ResolveMetadataRequest) returns (ResolveMetadataResponse);
+}
+
+message ResolveMetadataRequest {
+  string artist = 1;
+  string album = 2;
+  string title = 3;
+}
+
+message ResolveMetadataResponse {
+  // matched is false when the plugin's source has nothing for this track —
+  // a normal, expected outcome, not an RPC error.
+  bool matched = 1;
+
+  string title = 2;
+  string artist = 3;
+  string album_artist = 4;
+  string album = 5;
+  int32 year = 6;
+}

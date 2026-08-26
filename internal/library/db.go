@@ -14,6 +14,8 @@ import (
 
 	goose "github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite" // registers the "sqlite" database/sql driver
+
+	"github.com/ferro-dev/lomax/internal/xdg"
 )
 
 //go:embed migrations/*.sql
@@ -80,18 +82,14 @@ const (
 )
 
 // DefaultPath returns the library database's default location:
-// $LOMAX_STATE_DIR/library.db if set, else
-// $XDG_STATE_HOME/lomax/library.db, else $HOME/.local/state/lomax/library.db.
+// $LOMAX_STATE_DIR/library.db if set, else $XDG_STATE_HOME/lomax/library.db.
 func DefaultPath() (string, error) {
 	if dir := os.Getenv(stateDirEnv); dir != "" {
 		return filepath.Join(dir, dbFileName), nil
 	}
-	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		return filepath.Join(xdg, "lomax", dbFileName), nil
-	}
-	home, err := os.UserHomeDir()
+	stateDir, err := xdg.StateDir()
 	if err != nil {
 		return "", fmt.Errorf("library: determine default database path: %w", err)
 	}
-	return filepath.Join(home, ".local", "state", "lomax", dbFileName), nil
+	return filepath.Join(stateDir, "lomax", dbFileName), nil
 }

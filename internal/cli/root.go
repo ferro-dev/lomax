@@ -35,6 +35,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newImportCmd())
 	root.AddCommand(newQueryCmd())
 	root.AddCommand(newVerifyCmd())
+	root.AddCommand(newPluginCmd())
 	return root
 }
 

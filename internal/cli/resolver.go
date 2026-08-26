@@ -11,6 +11,7 @@ import (
 	"github.com/ferro-dev/lomax/internal/acoustid"
 	"github.com/ferro-dev/lomax/internal/audio"
 	"github.com/ferro-dev/lomax/internal/musicbrainz"
+	"github.com/ferro-dev/lomax/internal/pluginhost"
 	"github.com/ferro-dev/lomax/internal/resolve"
 )
 
@@ -24,15 +25,43 @@ const acoustIDAPIKeyEnv = "LOMAX_ACOUSTID_API_KEY"
 var changedFieldStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("2")) // green
 
 // newResolver builds a metadata Resolver backed by real MusicBrainz and (if
-// acoustidKey is set) AcoustID clients. Shared by resolve, import, and
-// retag, so all three commands resolve metadata identically.
-func newResolver(acoustidKey string) *resolve.Resolver {
+// acoustidKey is set) AcoustID clients, plus every plugin discovery finds
+// (see internal/pluginhost). Shared by resolve, import, and retag, so all
+// three commands resolve metadata identically.
+//
+// The returned func must be deferred by the caller: it terminates every
+// plugin subprocess this resolver launched. A plugin that fails its
+// handshake is skipped with a warning rather than failing the command —
+// matching section 9's discovery behavior.
+func newResolver(cmd *cobra.Command, acoustidKey string) (*resolve.Resolver, func(), error) {
 	mb := musicbrainz.NewClient(fmt.Sprintf("lomax/%s ( https://github.com/ferro-dev/lomax )", Version))
 	var ai *acoustid.Client
 	if acoustidKey != "" {
 		ai = acoustid.NewClient(acoustidKey)
 	}
-	return resolve.NewResolver(mb, ai)
+	r := resolve.NewResolver(mb, ai)
+
+	pluginDir, err := pluginhost.DefaultPluginDir()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var handles []*pluginhost.Handle
+	closeAll := func() {
+		for _, h := range handles {
+			h.Close()
+		}
+	}
+	for _, d := range pluginhost.Discover(pluginDir, pluginhost.ExtraDirsFromEnv()) {
+		h, err := pluginhost.Load(d)
+		if err != nil {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: plugin %q failed to load, skipping: %v\n", d.Name, err)
+			continue
+		}
+		handles = append(handles, h)
+		r.PluginSources = append(r.PluginSources, resolve.PluginSource{Name: h.Name, ResolveMetadata: h.Resolver.ResolveMetadata})
+	}
+	return r, closeAll, nil
 }
 
 // resolveFile reads file's tags and resolves a metadata proposal for it,

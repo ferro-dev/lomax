@@ -8,6 +8,7 @@ import (
 	"github.com/ferro-dev/lomax/internal/acoustid"
 	"github.com/ferro-dev/lomax/internal/audio"
 	"github.com/ferro-dev/lomax/internal/musicbrainz"
+	"github.com/ferro-dev/lomax/internal/pluginapi"
 )
 
 func TestResolveReturnsMusicBrainzMatchWithoutTryingAcoustID(t *testing.T) {
@@ -109,6 +110,62 @@ func TestResolveCollectsWarningsWithoutFailing(t *testing.T) {
 	r := &Resolver{
 		SearchRecording: func(ctx context.Context, artist, album, title string) (*musicbrainz.Recording, error) {
 			return nil, errors.New("network exploded")
+		},
+	}
+
+	proposal, warnings, err := r.Resolve(context.Background(), audio.Track{Artist: "A", Title: "T"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if proposal != nil {
+		t.Errorf("proposal = %+v, want nil", proposal)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("warnings = %v, want exactly one", warnings)
+	}
+}
+
+func TestResolveFallsBackToPluginSourcesInOrder(t *testing.T) {
+	firstCalled := false
+	r := &Resolver{
+		PluginSources: []PluginSource{
+			{
+				Name: "discogs",
+				ResolveMetadata: func(ctx context.Context, artist, album, title string) (*pluginapi.Match, error) {
+					firstCalled = true
+					return nil, nil // no match — falls through to the next plugin
+				},
+			},
+			{
+				Name: "lastfm",
+				ResolveMetadata: func(ctx context.Context, artist, album, title string) (*pluginapi.Match, error) {
+					return &pluginapi.Match{Title: "Found via Last.fm", Artist: artist}, nil
+				},
+			},
+		},
+	}
+
+	proposal, _, err := r.Resolve(context.Background(), audio.Track{Artist: "Artist", Title: "Title"})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !firstCalled {
+		t.Error("first plugin source was never tried")
+	}
+	if proposal == nil || proposal.Title != "Found via Last.fm" || proposal.Source != "lastfm plugin match" {
+		t.Errorf("proposal = %+v, want the second plugin source's match", proposal)
+	}
+}
+
+func TestResolvePluginSourceErrorIsAWarningNotAFailure(t *testing.T) {
+	r := &Resolver{
+		PluginSources: []PluginSource{
+			{
+				Name: "flaky",
+				ResolveMetadata: func(ctx context.Context, artist, album, title string) (*pluginapi.Match, error) {
+					return nil, errors.New("plugin subprocess crashed")
+				},
+			},
 		},
 	}
 
