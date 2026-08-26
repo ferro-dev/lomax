@@ -928,10 +928,10 @@ mkdocs.yml
 - [ ] Set up GitHub Sponsors — **deferred to [Milestone 6](#milestone-6--first-release)** (no value pre-release; avoids a donate button on an empty repo)
 
 ### Milestone 1 — Core Tag Reading & Display
-- [ ] Read audio files recursively from a path
-- [ ] Parse tags via the `dhowden/tag` abstraction layer
-- [ ] Display current tags in a lipgloss table (`lomax inspect <path>`)
-- [ ] Identify format, duration, bitrate, and encoding info
+- [x] Read audio files recursively from a path
+- [x] Parse tags via the `dhowden/tag` abstraction layer
+- [x] Display current tags in a lipgloss table (`lomax inspect <path>`)
+- [x] Identify format, duration, bitrate, and encoding info (duration/bitrate/sample rate/channels via `ffprobe` subprocess, degrades to "n/a" when ffprobe is unavailable or the probe fails)
 
 ### Milestone 2 — Metadata Resolution
 - [ ] MusicBrainz lookup by existing tags (artist + album + title)
