@@ -30,6 +30,7 @@ func newRootCmd() *cobra.Command {
 	root.SetVersionTemplate("lomax {{.Version}}\n" + Attribution + "\n")
 	root.AddCommand(newAboutCmd())
 	root.AddCommand(newInspectCmd())
+	root.AddCommand(newResolveCmd())
 	return root
 }
 
