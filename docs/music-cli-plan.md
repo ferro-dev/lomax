@@ -965,10 +965,19 @@ mkdocs.yml
 - Dependency versions actually used: `modernc.org/sqlite` pinned to `v1.29.6` and `pressly/goose/v3` pinned to `v3.20.0` — both packages' `@latest` bump the `go.mod` floor well past the declared Go 1.22 (`go get` at HEAD required Go 1.25), which would break CI's pinned `GO_VERSION: "1.22"`. Revisit the pin when the CI floor itself is deliberately raised.
 
 ### Milestone 5 — Plugin System
-- [ ] `go-plugin` hook protocol definitions (gRPC, versioned)
-- [ ] Plugin discovery at startup (plugin dir + `$PATH`)
-- [ ] `lomax plugin list` / `plugin install` / `plugin remove` commands
-- [ ] Port Discogs and Last.fm sources as first-party plugins
+- [x] `go-plugin` hook protocol definitions (gRPC, versioned)
+- [x] Plugin discovery at startup (plugin dir + `$PATH`)
+- [x] `lomax plugin list` / `plugin install` / `plugin remove` commands
+- [x] Port Discogs and Last.fm sources as first-party plugins
+
+**Scope notes (2026-08-26):**
+- `internal/pluginapi` defines exactly one gRPC service so far, `MetadataResolver` (proto in `internal/pluginapi/proto/plugin.proto`, generated code checked in — no `protoc` needed at build time, only when the `.proto` changes). The other hooks named in section 9's table (`pre_import`, `post_import`, `pre_write_tags`, `post_write_tags`, `format_path`, `sync_device`, `pre_sync_transform`, `register_commands`) are documented there but have no service definition yet — each gets one when core grows an actual call site for it, rather than speculatively generating unused RPC surface. Handshake `ProtocolVersion: 1`.
+- `internal/pluginhost` discovers `lomax-plugin-*` binaries in `$XDG_DATA_HOME/lomax/plugins/` → `$LOMAX_PLUGIN_PATH`-listed dirs (the pre-config-system stand-in for the `plugin_path` config key) → `$PATH`, in that priority order, and loads them via HashiCorp `go-plugin`. A plugin failing its handshake is skipped with a warning, matching section 9.
+- `internal/resolve.Resolver` gained `PluginSources`, tried in discovery order after MusicBrainz and AcoustID — `resolve`/`import`/`retag` all load installed plugins automatically; no plugins installed = no behavior change from Milestone 2-4.
+- `plugins/discogs` and `plugins/lastfm` are real first-party plugins (own `go.mod` each, per the multi-module monorepo decision), each a thin HTTP client for its API plus a `MetadataResolver` adapter. Discogs proposes artist/album/year (its search is release-oriented, no per-track title without a second request this plugin doesn't make); Last.fm proposes title/artist only (its stated role is supplemental correction, not primary tagging — see section 6). Configure via `LOMAX_DISCOGS_TOKEN` / `LOMAX_LASTFM_API_KEY`; unconfigured means a clean no-match, not an error.
+- `lomax plugin install <name>` builds a first-party plugin **from this monorepo checkout** (`go build ./plugins/<name>`) — there's no release-binary distribution or registry yet (that's Milestone 6's job). Only meaningful run from inside a lomax source checkout; documented in the command's own error when `plugins/<name>` isn't found.
+- Dependency pins hit the same go.mod-floor trap as Milestone 4's sqlite/goose: `go get @latest` for `hashicorp/go-plugin`, `google.golang.org/grpc`, and `modernc.org/sqlite`'s cousins all bump past Go 1.22. Pinned `hashicorp/go-plugin@v1.6.0` (root and both plugin modules) with `google.golang.org/grpc@v1.65.0` explicitly pinned everywhere too — the generated `*_grpc.pb.go` needs a newer grpc runtime than go-plugin v1.6.0's own transitive requirement provides, but the newest grpc bumps the floor, so both plugin modules pin the exact same grpc/genproto/protobuf trio as root.
+- CI gained a `test-plugins` job that builds+vets+tests every `plugins/*/` module (they're invisible to root's own `go build ./...` / `go test ./...` since each is a separate module) — see also `make check-plugins` / `make check-all`.
 
 ### Milestone 6 — First Release
 - [ ] Version 0.1.0 tagged; Goreleaser builds `linux-amd64` and `linux-arm64`
