@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/charmbracelet/lipgloss/table"
@@ -26,19 +25,9 @@ func newInspectCmd() *cobra.Command {
 }
 
 func runInspect(cmd *cobra.Command, path string) error {
-	info, err := os.Stat(path)
+	files, err := scanPathForAudio("inspect", path)
 	if err != nil {
-		return fmt.Errorf("inspect %s: %w", path, err)
-	}
-
-	var files []string
-	if info.IsDir() {
-		files, err = audio.Scan(path)
-		if err != nil {
-			return fmt.Errorf("inspect %s: %w", path, err)
-		}
-	} else {
-		files = []string{path}
+		return err
 	}
 
 	if len(files) == 0 {

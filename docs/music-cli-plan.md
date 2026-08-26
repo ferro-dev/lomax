@@ -934,10 +934,10 @@ mkdocs.yml
 - [x] Identify format, duration, bitrate, and encoding info (duration/bitrate/sample rate/channels via `ffprobe` subprocess, degrades to "n/a" when ffprobe is unavailable or the probe fails)
 
 ### Milestone 2 — Metadata Resolution
-- [ ] MusicBrainz lookup by existing tags (artist + album + title)
-- [ ] AcoustID fingerprint generation + MusicBrainz lookup for untagged files
-- [ ] Display proposed changes as a lipgloss diff (before/after per field)
-- [ ] Dry-run mode
+- [x] MusicBrainz lookup by existing tags (artist + album + title)
+- [x] AcoustID fingerprint generation + lookup for untagged/unmatched files (`fpcalc` subprocess + AcoustID API; MusicBrainz lookup of the AcoustID recording ID deferred — AcoustID's own `recordings` metadata already supplies title/artist/album)
+- [x] Display proposed changes as a lipgloss diff (before/after per field, with source attribution — `lomax resolve <path>`)
+- [x] Dry-run mode (`--dry-run`, default and currently only supported mode; `--dry-run=false` is rejected until Milestone 3 adds tag writing)
 
 ### Milestone 3 — Tag Writing & File Organization
 - [ ] Write approved tag changes to files
