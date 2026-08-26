@@ -115,7 +115,14 @@ func TestClientEnforcesMinInterval(t *testing.T) {
 	if len(requestTimes) != 2 {
 		t.Fatalf("got %d requests, want 2", len(requestTimes))
 	}
-	if gap := requestTimes[1].Sub(requestTimes[0]); gap < 50*time.Millisecond {
-		t.Errorf("requests were %v apart, want at least 50ms", gap)
+	// time.Sleep is documented to pause for "at least" its argument, but in
+	// practice a loaded scheduler can return a hair early (observed: a
+	// 50ms sleep waking ~0.6ms short on a CI runner). Assert against the
+	// configured interval with a small tolerance rather than the exact
+	// value — the thing worth testing is that requests get spaced out at
+	// all, not sub-millisecond timer precision.
+	const tolerance = 5 * time.Millisecond
+	if gap := requestTimes[1].Sub(requestTimes[0]); gap < 50*time.Millisecond-tolerance {
+		t.Errorf("requests were %v apart, want at least ~50ms", gap)
 	}
 }
