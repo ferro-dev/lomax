@@ -940,11 +940,17 @@ mkdocs.yml
 - [x] Dry-run mode (`--dry-run`, default and currently only supported mode; `--dry-run=false` is rejected until Milestone 3 adds tag writing)
 
 ### Milestone 3 — Tag Writing & File Organization
-- [ ] Write approved tag changes to files
-- [ ] Configurable naming template engine
-- [ ] Move or copy files to target directory structure
-- [ ] Import workflow (new files → library)
-- [ ] Manage-in-place workflow (existing library → review + fix)
+- [x] Write approved tag changes to files (MP3 via `bogem/id3v2`, FLAC via `go-flac`/`flacvorbis`; MP4/M4A and OGG writing deferred — see note below)
+- [x] Configurable naming template engine (`internal/naming`; `--naming-template` flag on `import`, default matches section 8's example)
+- [x] Move or copy files to target directory structure (`import` copies by default, `--move` to move instead)
+- [x] Import workflow (new files → library): `lomax import <source> --dest <library>`
+- [x] Manage-in-place workflow (existing library → review + fix): `lomax retag <path>`
+
+**Scope notes (2026-08-26):**
+- Tag writing covers only the fields the Milestone 2 resolver proposes (title/artist/album/album artist/year) — track/disc/genre/comment writing is not yet implemented, consistent with the M2 scope cut.
+- MP4/M4A and OGG tag *writing* are not implemented — `abema/go-mp4` needs real box-manipulation design work the plan's dependency table anticipated ("upstream contribution or light forking is expected"); reading remains fully supported for all formats via `dhowden/tag`. `lomax import`/`retag` still organize and preview these files, they just can't rewrite their tags yet.
+- `import`/`retag` are non-interactive (`--dry-run` preview, then apply-all via `--dry-run=false`) — the full per-track/per-album interactive confirm-or-skip review from section 8's workflow narrative is deferred; the diff preview still shows exactly what would change first.
+- Dependency versions actually used are the `/v2` module lines (`bogem/id3v2/v2`, `go-flac/go-flac/v2`, `go-flac/flacvorbis/v2`), not the unversioned import paths in section 5's table.
 
 ### Milestone 4 — Library Database
 - [ ] `database/sql` schema on `modernc.org/sqlite` for tracks, albums, artists; migrations via `goose`
